@@ -3,7 +3,7 @@ https://chsasank.github.io/classic_papers/unix-time-sharing-system.html
 
 *Writers notes are in itallics*
 
-- The design choices described in this paper significantly influenced the modern OS design
+- The design choices described in this paper significantly influenced modern OS design
 
 ## What is Unix?
 - General-purpose, multi-user interactive OS
@@ -58,7 +58,7 @@ Files are super important for the Unix architecture. **Unix exposes all funciona
     - *The rooted tree structure is **so** engrained into the way file systems work that I can't imagine how folder navigation would work if the rooted tree structure didn't exist. Imagine trying to find folders that are in random places in the file system!*
 
 ### Special Files
-- These are the weird part of the UNIX file system (then CP/M (and thus MS-DOS) stole the idea and the concept became less weird)
+- These are the weird part of the UNIX file system *(then CP/M (and thus MS-DOS) stole the idea and the concept became less weird)*
 - Each I/O device supported by Unix is associated with at least one of these files
 - These files are read and written like any ordinary file, but requests to read or write result in activation of the associated device
 - These files are stored in **/dev**, although links may be made to these files
