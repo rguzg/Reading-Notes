@@ -128,3 +128,97 @@ However, if you move the two calls within an I/O cycle *AKA, they're not execute
 # process.nextTick()
 - `process.nextTick()` is not part of the event loop. The `nextTickQueue` will be processed after the current operation is completed, regardless of the current phase of the event loop. An operation is defined as a transition from the C/C++ handler and handling the JavaScript that needs to be executed *i.e. an operation finishing is the time between the JavaScript engine determining that a callback needs to be executed and the callback being executed*
 - Any time `process.nextTick()` is called in a given phase, all callbacks to `process.nextTick()` will be resolved before the event loop continues. This can be a problem, because it allows you to starve your I/O callbacks by making recursive `process.nextTick()` calls, which prevents the evet loop from reaching the poll phase
+- `process.nextTick()` exists as a design philosophy where an API should always be asynchronous even where it doesn't have to be. For example, in this function, the callback is called asynchronously using `process.nextTick()`:
+
+```javascript
+function apiCall(arg, callback) {
+  if (typeof arg !== 'string')
+    // The second argument of process.nextTick is the arguments that are passed to the callback. This was done so that an arrow function
+    // containing the callback didn't have to be added
+    return process.nextTick(callback,
+                            new TypeError('argument should be string'));
+}
+```
+
+- On the example above, if the argument check fails, the callback will be called with an error, but only **after the rest of the synchronous code has be run and before the event loop starts**
+- Calling `process.nextTick()` just registers the callback inside of the nextTickQueue, this allows recursive calls to `process.nextTick()` without reaching a `RangeError: Maximum call stack size exceeded from v8`
+- This philosophy can lead to some problematic situations, like this one:
+```javascript
+let bar;
+
+// this has an asynchronous signature, but calls callback synchronously
+function someAsyncApiCall(callback) { callback(); }
+
+// the callback is called before `someAsyncApiCall` completes.
+someAsyncApiCall(() => {
+  // since someAsyncApiCall hasn't completed, bar hasn't been assigned any value
+  console.log('bar', bar); // undefined
+});
+
+bar = 1;
+```
+- In the example, `someAsyncApiCall` calls `callback` synchronously, which means that when the callback is executed `bar` will still not be in scope, because the script has not run to completion yet.
+- This problem can be solved by placing `callback` inside `process.nextTick()`. By doing this, the script will be able to run to completion and `bar` will be in scope when the callback is run
+- `process.nextTick()` can be useful when you need to inform the user about an error before the event loop continues
+- Another real world example:
+
+```javascript
+const server = net.createServer(() => {}).listen(8080);
+
+server.on('listening', () => {});
+```
+
+- When only a port is passed, the port is bound immediately. So, the `listening` callback could be called immediately, the problem is that the `.on('listening')` callback will not have been set by that time. To get around this, the `listening` event is queued in a `process.nextTick()` to allow the script to run to completion. This allows the user to set any event handlers they want.
+
+## process.nextTick() vs setImmediate()    
+- The names of these two functions are backwards, `process.nextTick()` fires immediately on the same phase and `setImmediate()` fires on the following iteration (tick) of the event loop.
+- The names should be backwards, but doing that would break a lot of npm packages
+- It's recommended to use `setImmediate()` because it's easier to reason about
+
+## Why use process.nextTick()?
+- It can be used to handle errors, cleanup unneeded resources or try a request again before the event loop continues. *For example, in the case of a request, the request could be attempted again to prevent another part of the program from crashing because the request failed*
+- Sometimes it's necessary to run a callback after the call stack has unwound but before the event loop continues. An example of this is:
+```javascript
+const server = net.createServer();
+server.on('connection', (conn) => { });
+
+server.listen(8080);
+server.on('listening', () => { });
+```
+- Say that `listen()` is run at the beginning of the event loop, but the execution of the listening callback is placed inside a `setImmediate()` call. Unless a hostname is passed, binding to the port will happen during the next time the event loop reaches the poll phase (this is because just opening a socket without having to resolve the hostname is a process that happens really quickly), as `setImmediate()` callbacks are called after the poll phase completes, there's a chance that a connection could have been received before the connection callback was assigned. *i.e. process.nextTick() could be used to prevent race conditions. BTW, remember that we already saw why the listening callback can't be called synchronously*
+- Another example is:
+```javascript
+const EventEmitter = require('events');
+const util = require('util');
+
+function MyEmitter() {
+  EventEmitter.call(this);
+  this.emit('event');
+}
+util.inherits(MyEmitter, EventEmitter);
+
+const myEmitter = new MyEmitter();
+myEmitter.on('event', () => {
+  console.log('an event occurred!');
+});
+```
+- You can't emit an event from the constructor immediately because the callback for the event hasn't been assigned yet. So, you can use `process.nextTick()` to set a callback to emit the event after the constructor has finished:
+```javascript
+const EventEmitter = require('events');
+const util = require('util');
+
+function MyEmitter() {
+  EventEmitter.call(this);
+
+  // use nextTick to emit the event once a handler is assigned
+  process.nextTick(() => {
+    this.emit('event');
+  });
+}
+util.inherits(MyEmitter, EventEmitter);
+
+const myEmitter = new MyEmitter();
+myEmitter.on('event', () => {
+  console.log('an event occurred!');
+});
+```
