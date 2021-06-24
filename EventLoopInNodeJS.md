@@ -93,7 +93,7 @@ Once the poll queue is empty, the event loop will check for timers that have exp
 ## Close callbacks
 If a socket or handle is closed abruptly, the `'close'` event will be emitted here
 
-# `setImmediate()` vs `setTimeout()`
+# setImmediate() vs setTimeout()
 - `setImmediate()` executes a callback after the current poll phase completes
 - `setTimeout()` schedules a callback to be run after a minimum threshold in milliseconds has elapsed
 
@@ -125,6 +125,6 @@ However, if you move the two calls within an I/O cycle *AKA, they're not execute
 
 *This is quite the interesting puzzle to find out why this happens. I'm guessing it happens because `setImmediate()` and `setTimeout()` are called inside a poll callback. When the poll callback is executed, the callback for `setImmediate()` is added to the check queue and NodeJS starts waiting for the `setTimeout()` timer to expire. After the poll callback is executed, the poll queue becomes empty and as stated in the explanation for the poll phase, the event loop checks for any `setImmediate()` callbacks first before checking on any expired timers.*
 
-# `process.nextTick()`
+# process.nextTick()
 - `process.nextTick()` is not part of the event loop. The `nextTickQueue` will be processed after the current operation is completed, regardless of the current phase of the event loop. An operation is defined as a transition from the C/C++ handler and handling the JavaScript that needs to be executed *i.e. an operation finishing is the time between the JavaScript engine determining that a callback needs to be executed and the callback being executed*
 - Any time `process.nextTick()` is called in a given phase, all callbacks to `process.nextTick()` will be resolved before the event loop continues. This can be a problem, because it allows you to starve your I/O callbacks by making recursive `process.nextTick()` calls, which prevents the evet loop from reaching the poll phase
